@@ -85,7 +85,6 @@ void arp_in(buf_t *buf, uint8_t *src_mac) {
  *
  * @param buf 要处理的数据包
  * @param ip 目标ip地址
- * @param protocol 上层协议
  */
 void arp_out(buf_t *buf, uint8_t *ip) {
     // TO-DO
