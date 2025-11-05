@@ -1,6 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+/* my ip address: 10.249.66.81 */
 #ifdef TEST
 #define NET_IF_IP          \
     {                      \

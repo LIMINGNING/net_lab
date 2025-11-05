@@ -57,8 +57,35 @@ void arp_print() {
  * @param target_ip 想要知道的目标的ip地址
  */
 void arp_req(uint8_t *target_ip) {
-    // TO-DO
+    /* Initialize data length */
+    buf_t *txbuf = malloc(sizeof(buf_t));
+    buf_init(txbuf, sizeof(arp_pkt_t));
+
+    /* Initialize ARP packet */
+    arp_pkt_t *arp_pkt = (arp_pkt_t *)txbuf->data + sizeof(ether_hdr_t);
+    arp_pkt->hw_type16 = swap16(ARP_HW_ETHER);
+    arp_pkt->pro_type16 = swap16(NET_PROTOCOL_IP);
+    arp_pkt->hw_len = NET_MAC_LEN;
+    arp_pkt->pro_len = NET_IP_LEN;
+    arp_pkt->opcode16 = swap16(ARP_REQUEST);
+    memcpy(arp_pkt->sender_mac, net_if_mac, NET_MAC_LEN);
+    memcpy(arp_pkt->sender_ip, net_if_ip, NET_IP_LEN);
+    memset(arp_pkt->target_mac, 0, NET_MAC_LEN);
+    memcpy(arp_pkt->target_ip, target_ip, NET_IP_LEN);
+
+    ethernet_out(txbuf, ether_broadcast_mac, NET_PROTOCOL_ARP); 
 }
+/* typedef struct arp_pkt {
+    uint16_t hw_type16;               // 硬件类型
+    uint16_t pro_type16;              // 协议类型
+    uint8_t hw_len;                   // 硬件地址长
+    uint8_t pro_len;                  // 协议地址长
+    uint16_t opcode16;                // 请求/响应
+    uint8_t sender_mac[NET_MAC_LEN];  // 发送包硬件地址
+    uint8_t sender_ip[NET_IP_LEN];    // 发送包协议地址
+    uint8_t target_mac[NET_MAC_LEN];  // 接收方硬件地址
+    uint8_t target_ip[NET_IP_LEN];    // 接收方协议地址
+} arp_pkt_t; */
 
 /**
  * @brief 发送一个arp响应
