@@ -70,7 +70,25 @@ uint8_t ip_prefix_match(uint8_t *ipa, uint8_t *ipb) {
  * @return uint16_t 校验和
  */
 uint16_t checksum16(uint16_t *data, size_t len) {
-    // TO-DO
+    uint32_t sum = 0;
+    size_t count = len / 2; // 16位字的个数
+    
+    // 按16位字累加
+    for (size_t i = 0; i < count; i++) {
+        sum += swap16(data[i]); // 转换为主机字节序
+    }
+    
+    // 处理奇数字节
+    if (len % 2) {
+        sum += ((uint8_t*)data)[len - 1] << 8; // 最后一个字节作为高字节
+    }
+    
+    // 处理进位，可能需要多次
+    while (sum >> 16) {
+        sum = (sum >> 16) + (sum & 0xFFFF);
+    }
+    
+    return ~sum;
 }
 
 #pragma pack(1)
