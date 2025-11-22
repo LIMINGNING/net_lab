@@ -5,13 +5,6 @@
 		}
 	],
 	"settings": {
-		"cmake.generator": "MinGW Makefiles",
-		"files.associations": {
-			"arp.h": "c",
-			"ethernet.h": "c",
-			"net.h": "c",
-			"config.h": "c",
-			"buf.h": "c"
-		}
+		"cmake.generator": "MinGW Makefiles"
 	}
 }

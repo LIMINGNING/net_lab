@@ -70,25 +70,27 @@ uint8_t ip_prefix_match(uint8_t *ipa, uint8_t *ipb) {
  * @return uint16_t 校验和
  */
 uint16_t checksum16(uint16_t *data, size_t len) {
+    // TO-DO
     uint32_t sum = 0;
-    size_t count = len / 2; // 16位字的个数
-    
-    // 按16位字累加
-    for (size_t i = 0; i < count; i++) {
-        sum += swap16(data[i]); // 转换为主机字节序
+
+    /* 按 16 位分组相加 */
+    while (len > 1) {
+        sum += *data++;
+        len -= 2;
+    }
+
+    /* 处理剩余 8 位 */
+    if (len > 0) {
+        sum += *(uint8_t *)data;
     }
     
-    // 处理奇数字节
-    if (len % 2) {
-        sum += ((uint8_t*)data)[len - 1] << 8; // 最后一个字节作为高字节
-    }
-    
-    // 处理进位，可能需要多次
+    /* 循环处理高 16 位 */
     while (sum >> 16) {
-        sum = (sum >> 16) + (sum & 0xFFFF);
+        sum = (sum & 0xFFFF) + (sum >> 16);
     }
-    
-    return ~sum;
+
+    /* 取反得到校验和 */
+    return ~(uint16_t)sum;
 }
 
 #pragma pack(1)
@@ -112,4 +114,24 @@ typedef struct peso_hdr {
  */
 uint16_t transport_checksum(uint8_t protocol, buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip) {
     // TO-DO
+    buf_add_header(buf, sizeof(peso_hdr_t));
+
+    peso_hdr_t temp_ip;
+    memcpy(&temp_ip, buf->data, sizeof(peso_hdr_t));
+
+    /* Exactly 12B, so can use peso_hdr_t to save TTL
+       protocol, checksum16, srcip, dstip
+    */
+    peso_hdr_t *peso_hdr = (peso_hdr_t *)buf->data;
+    memcpy(peso_hdr->src_ip, src_ip, 4);
+    memcpy(peso_hdr->dst_ip, dst_ip, 4);
+    peso_hdr->placeholder = 0;
+    peso_hdr->protocol = protocol;
+    peso_hdr->total_len16 = swap16(buf->len - sizeof(peso_hdr_t));
+
+    uint16_t checksum = checksum16((uint16_t *)buf->data, buf->len);
+
+    memcpy(buf->data, &temp_ip, sizeof(peso_hdr_t));
+    buf_remove_header(buf, sizeof(peso_hdr_t));
+    return checksum;
 }

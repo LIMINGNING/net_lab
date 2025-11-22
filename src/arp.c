@@ -58,11 +58,10 @@ void arp_print() {
  */
 void arp_req(uint8_t *target_ip) {
     /* Initialize data length */
-    buf_t *txbuf = malloc(sizeof(buf_t));
-    buf_init(txbuf, sizeof(arp_pkt_t));
+    buf_init(&txbuf, sizeof(arp_pkt_t));
 
     /* Initialize ARP packet */
-    arp_pkt_t *arp_pkt = (arp_pkt_t *)txbuf->data + sizeof(ether_hdr_t);
+    arp_pkt_t *arp_pkt = (arp_pkt_t *)txbuf.data;
     arp_pkt->hw_type16 = swap16(ARP_HW_ETHER);
     arp_pkt->pro_type16 = swap16(NET_PROTOCOL_IP);
     arp_pkt->hw_len = NET_MAC_LEN;
@@ -73,7 +72,7 @@ void arp_req(uint8_t *target_ip) {
     memset(arp_pkt->target_mac, 0, NET_MAC_LEN);
     memcpy(arp_pkt->target_ip, target_ip, NET_IP_LEN);
 
-    ethernet_out(txbuf, ether_broadcast_mac, NET_PROTOCOL_ARP); 
+    ethernet_out(&txbuf, ether_broadcast_mac, NET_PROTOCOL_ARP); 
 }
 
 /**
@@ -83,22 +82,21 @@ void arp_req(uint8_t *target_ip) {
  * @param target_mac 目标mac地址
  */
 void arp_resp(uint8_t *target_ip, uint8_t *target_mac) {
-    buf_t* txbuf = (buf_t*)malloc(sizeof(buf_t));
-    buf_init(txbuf, sizeof(arp_pkt_t));
+    buf_init(&txbuf, sizeof(arp_pkt_t));
 
     /* Initialize ARP packet */
-    arp_pkt_t *pkt = (arp_pkt_t *)txbuf->data;
-    pkt->hw_type16 = ARP_HW_ETHER;
-    pkt->pro_type16 = NET_PROTOCOL_IP;
+    arp_pkt_t *pkt = (arp_pkt_t *)txbuf.data;
+    pkt->hw_type16 = swap16(ARP_HW_ETHER);
+    pkt->pro_type16 = swap16(NET_PROTOCOL_IP);
     pkt->hw_len = NET_MAC_LEN;
     pkt->pro_len = NET_IP_LEN;
-    pkt->opcode16 = ARP_REPLY;
+    pkt->opcode16 = swap16(ARP_REPLY);
     memcpy(pkt->sender_mac, net_if_mac, NET_MAC_LEN);
     memcpy(pkt->sender_ip, net_if_ip, NET_IP_LEN);
     memcpy(pkt->target_mac, target_mac, NET_MAC_LEN);
     memcpy(pkt->target_ip, target_ip, NET_IP_LEN);
 
-    ethernet_out(txbuf, target_mac, NET_PROTOCOL_ARP);
+    ethernet_out(&txbuf, target_mac, NET_PROTOCOL_ARP);
 }
 
 /**

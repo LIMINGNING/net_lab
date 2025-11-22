@@ -48,15 +48,20 @@ void ip_in(buf_t *buf, uint8_t *src_mac) {
     if (buf->len < swap16(((ip_hdr_t *)buf->data)->total_len16)) {
         /* If the buffer length is less than the total length, drop the packet */
         return;
-    } else {
+    } else if (buf->len > swap16(((ip_hdr_t *)buf->data)->total_len16)) {
+        /* If the buffer length is greater than the total length, remove padding */
         buf_remove_padding(buf, buf->len - swap16(((ip_hdr_t *)buf->data)->total_len16));
     }
+    
+    /* Save protocol and source ip, then remove ip header. */
+    uint8_t protocol = ((ip_hdr_t *)buf->data)->protocol;
+    uint8_t src_ip[NET_IP_LEN];
+    memcpy(src_ip, ((ip_hdr_t *)buf->data)->src_ip, NET_IP_LEN);
+    buf_remove_header(buf, ((ip_hdr_t *)buf->data)->hdr_len * IP_HDR_LEN_PER_BYTE);
 
-    buf_remove_padding(buf, buf->len - swap16(((ip_hdr_t *)buf->data)->total_len16));
-
-    if (net_in(buf, ((ip_hdr_t *)buf->data)->protocol, ((ip_hdr_t *)buf->data)->src_ip) == -1) {
+    if (net_in(buf, protocol, src_ip) == -1) {
         /* If there is no handler for the protocol, send an ICMP unreachable message */
-        icmp_unreachable(buf, src_mac, ICMP_CODE_PROTOCOL_UNREACHABLE);
+        icmp_unreachable(buf, src_ip, ICMP_CODE_PROTOCOL_UNREACH);
     }
 
     return;
@@ -72,7 +77,35 @@ void ip_in(buf_t *buf, uint8_t *src_mac) {
  * @param mf 分片mf标志，是否有下一个分片
  */
 void ip_fragment_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol, int id, uint16_t offset, int mf) {
-
+    /* Add ip header. */
+    buf_add_header(buf, sizeof(ip_hdr_t));
+    ip_hdr_t *hdr = (ip_hdr_t *)buf->data;
+    
+    /* Fill in the IP header fields */
+    hdr->version = IP_VERSION_4;
+    hdr->hdr_len = sizeof(ip_hdr_t) / IP_HDR_LEN_PER_BYTE;
+    hdr->tos = 0;
+    hdr->total_len16 = swap16(buf->len);
+    hdr->id16 = swap16(id);
+    
+    /* Set flags_fragment and offset. */
+    uint16_t flags_fragment = (offset / IP_HDR_OFFSET_PER_BYTE) & 0x1FFF;  // 偏移量占低13位
+    if (mf) {
+        flags_fragment |= IP_MORE_FRAGMENT;  // 设置MF标志位
+    }
+    hdr->flags_fragment16 = swap16(flags_fragment);
+    
+    hdr->ttl = IP_DEFALUT_TTL;
+    hdr->protocol = protocol;
+    memcpy(hdr->src_ip, net_if_ip, NET_IP_LEN);
+    memcpy(hdr->dst_ip, ip, NET_IP_LEN);
+    
+    /* Calculate checksum */
+    hdr->hdr_checksum16 = 0;
+    hdr->hdr_checksum16 = checksum16((uint16_t *)hdr, sizeof(ip_hdr_t));
+    
+    /* Send to arp level. */
+    arp_out(buf, ip);
 }
 
 /**
@@ -83,33 +116,42 @@ void ip_fragment_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol, int id, u
  * @param protocol 上层协议
  */
 void ip_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol) {
-    if (buf->len + sizeof(ip_hdr_t) > 1500) {
-        buf_t *txbuf = malloc(sizeof(buf_t));
-        buf_init(txbuf, 1500 - sizeof(ip_hdr_t));
-
+    // 计算MTU，去掉IP头部的空间
+    size_t max_payload = ETHERNET_MAX_TRANSPORT_UNIT - sizeof(ip_hdr_t);
+    
+    if (buf->len > max_payload) {
+        // 需要分片
+#ifdef TEST
+        int id = 0;  // 测试环境使用固定ID
+#else
         int id = rand() % UINT16_MAX;
-
-        uint16_t offset = 0;
-        int pacage_id = 0;
-
-        size_t original_len = buf->len;
-        while (original_len - 1480 > 0) {
-            offset = pacage_id * 1480 / 8;
-            ip_fragment_out(txbuf, ip, protocol, id, offset, 1);
-            original_len -= 1480;
-            pacage_id++;
-        }
-
-        if (original_len > 0) {
-            buf_t *txbuf1 = malloc(sizeof(buf_t));
-            buf_init(txbuf1, original_len);
-            offset = pacage_id * 1480 / 8;
-            ip_fragment_out(txbuf1, ip, protocol, id, offset, 0);
+#endif
+        size_t fragment_size = max_payload & ~7;  // 必须是8的倍数
+        size_t sent = 0;
+        
+        while (sent < buf->len) {
+            size_t this_fragment_size = buf->len - sent;
+            int mf = 0;
+            
+            if (this_fragment_size > fragment_size) {
+                this_fragment_size = fragment_size;
+                mf = 1;  // 还有更多分片
+            }
+            
+            // 创建分片缓冲区
+            buf_t fragment;
+            buf_init(&fragment, this_fragment_size);
+            memcpy(fragment.data, buf->data + sent, this_fragment_size);
+            
+            // 发送分片
+            ip_fragment_out(&fragment, ip, protocol, id, sent, mf);
+            
+            sent += this_fragment_size;
         }
     } else {
+        // 不需要分片，直接发送
         ip_fragment_out(buf, ip, protocol, rand() % UINT16_MAX, 0, 0);
     }
-
 }
 
 /**
